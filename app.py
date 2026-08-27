@@ -8,6 +8,8 @@ supervision," International Review of Economics and Finance, 110, 105571.
 
 Run with: streamlit run app.py
 """
+from io import BytesIO
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -72,11 +74,43 @@ st.set_page_config(page_title="Bank Risk Early-Warning Dashboard", layout="wide"
 
 
 @st.cache_data
-def load():
+def load_default():
     return run_pipeline(DATA_PATH)
 
 
-result = load()
+@st.cache_data
+def load_from_bytes(file_bytes, sheet_name):
+    return run_pipeline(BytesIO(file_bytes), sheet_name=sheet_name)
+
+
+# ---------------------------------------------------------------------------
+# Sidebar - optional data upload (dùng để nạp dữ liệu cập nhật làm "test set"
+# demo trực tiếp trong buổi thuyết trình, không cần sửa code / deploy lại)
+# ---------------------------------------------------------------------------
+st.sidebar.markdown("### Dữ liệu nguồn")
+uploaded_file = st.sidebar.file_uploader(
+    "Nạp file dữ liệu cập nhật (.xlsx, cùng cấu trúc cột với bộ dữ liệu gốc)",
+    type=["xlsx"],
+)
+sheet_name = st.sidebar.text_input("Tên sheet chứa dữ liệu", value="Data")
+
+if uploaded_file is not None:
+    try:
+        result = load_from_bytes(uploaded_file.getvalue(), sheet_name)
+        st.sidebar.success(f"Đang dùng dữ liệu tải lên: **{uploaded_file.name}**")
+        if st.sidebar.button("Quay lại dữ liệu mặc định"):
+            uploaded_file = None
+            st.rerun()
+    except Exception as e:
+        st.sidebar.error(
+            f"Không đọc được file này (kiểm tra lại tên sheet và cấu trúc cột). Chi tiết lỗi: {e}"
+        )
+        st.sidebar.warning("Đang dùng tạm dữ liệu mặc định bên dưới.")
+        result = load_default()
+else:
+    result = load_default()
+    st.sidebar.caption("Đang dùng dữ liệu mặc định: Le et al. (2022), 2002-2021, 44 ngân hàng.")
+
 labeled = result["labeled"]
 centroids = result["centroids"]
 transition_probs = result["transition_probs"]
@@ -96,10 +130,16 @@ latest = latest.sort_values("AggRisk", ascending=False)
 # Header
 # ---------------------------------------------------------------------------
 st.title("Bank Risk Early-Warning Supervision Dashboard")
+_n_banks = labeled["Bank Code"].nunique()
+_yr_min, _yr_max = int(labeled["Year"].min()), int(labeled["Year"].max())
+_data_desc = (
+    f"file tải lên ({uploaded_file.name})" if uploaded_file is not None
+    else "Le et al. (2022) Vietnamese banking dataset"
+)
 st.caption(
-    "Demo prototype - CAMEL block-wise PCA + K-means clustering. "
-    "Data: Le et al. (2022) Vietnamese banking dataset, 44 commercial banks, 2002-2021. "
-    "Method reimplemented from Chung & Hung (2026), *Int. Review of Economics and Finance*, 110, 105571."
+    f"Demo prototype - CAMEL block-wise PCA + K-means clustering. "
+    f"Data: {_data_desc}, {_n_banks} ngân hàng, {_yr_min}-{_yr_max}. "
+    f"Method reimplemented from Chung & Hung (2026), *Int. Review of Economics and Finance*, 110, 105571."
 )
 
 tab1, tab2, tab3 = st.tabs(["Portfolio Overview", "Bank Detail", "System Transitions"])

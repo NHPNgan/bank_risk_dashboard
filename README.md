@@ -29,13 +29,24 @@ Opens at http://localhost:8501
 
 ## Using updated/current data
 
-Update `DATA_PATH` at the top of `app.py` to point to your new Excel file
-(same column layout as the Le et al. (2022) Vietnamese banking dataset —
-Bank Code, Year, plus the raw balance-sheet/income-statement fields the
-pipeline maps to the 11 CAMEL indicators). Since PCA + K-means aren't a
-pretrained model but a fit-on-whatever-data-you-give-it procedure, pointing
-`DATA_PATH` at the updated file automatically re-fits everything fresh — no
-separate "retraining" step needed.
+The app has a **file uploader in the sidebar** ("Nạp file dữ liệu cập nhật") —
+no code edits or redeploy needed. Upload a new `.xlsx` file with the same
+column layout as the Le et al. (2022) Vietnamese banking dataset (Bank Code,
+Year, plus the raw balance-sheet/income-statement fields the pipeline maps to
+the 11 CAMEL indicators), confirm the sheet name (default `Data`), and the
+whole dashboard — clustering, transitions, alerts — re-fits on that file
+live. Since PCA + K-means aren't a pretrained model but a fit-on-whatever-
+data-you-give-it procedure, this "retrains" correctly every time; there is no
+separate training step. Use the "Quay lại dữ liệu mặc định" button to switch
+back to the original 2002-2021 dataset. This is the intended way to demo a
+live "test set" during the presentation.
+
+If a file fails to load (wrong sheet name, missing/renamed columns), the app
+shows the error and falls back to the default dataset rather than crashing.
+
+For a permanent change to the default dataset instead, replace
+`data/VN_banks_dataset.xlsx` in the repo (same file name) or edit `DATA_PATH`
+at the top of `app.py`.
 
 ## Deploy for the live demo
 
