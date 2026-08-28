@@ -48,6 +48,41 @@ For a permanent change to the default dataset instead, replace
 `data/VN_banks_dataset.xlsx` in the repo (same file name) or edit `DATA_PATH`
 at the top of `app.py`.
 
+**Important:** since PCA + K-means refit fresh on whatever rows are given,
+uploading only a few recent years on their own shrinks the reference sample
+(noisier PCA/cluster boundaries) and leaves too few consecutive-year pairs to
+compute a meaningful transition matrix. For the live demo, upload a file that
+appends the new/recent years to the full historical panel (same sheet, same
+columns, new rows below the existing ones) rather than the new years alone.
+
+## What's new (supervisor-facing features)
+
+Added after reviewing the dashboard from the perspective of its intended
+user — a bank-system risk supervision unit uploading fresh data, reading
+results, and forming a view of sector health:
+
+- **Data-context bar** right under the title: always shows how many banks and
+  which year range are currently loaded, and which file (default vs
+  uploaded). If banks' "latest year on record" isn't the same across the
+  portfolio (some report later than others), a warning banner lists the
+  breakdown by year so the Portfolio table isn't misread as one single
+  snapshot date.
+- **"Về phương pháp luận" expander**: a collapsible in-app summary of the
+  CAMEL → PCA → K-means → transitions pipeline and its limitations (moved
+  out of this README so an end user reading the live app — not the repo —
+  still sees it).
+- **System-wide trend chart** (Portfolio Overview tab): a stacked bar of bank
+  counts per risk state, by year — shows whether the *whole system* has been
+  getting worse or better over time, not just each bank's own latest state.
+- **Raw CAMEL ratio table** (Bank Detail tab): the actual % ratios (ROE, NPL,
+  CIR, etc.) for the selected bank/year, next to the existing standardized
+  z-score chart — for reading against real-world thresholds, not just
+  relative deviation.
+- **NPL benchmark chart** (Bank Detail tab): the bank's NPL ratio over time
+  with a reference line at 3%, the ceiling commonly cited in Vietnamese
+  banking regulation as a safe-operation threshold. This line is a visual
+  reference only, not an input to the clustering model.
+
 ## Deploy for the live demo
 
 Push this folder to a GitHub repo and deploy free at

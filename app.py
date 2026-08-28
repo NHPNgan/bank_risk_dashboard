@@ -17,6 +17,9 @@ import plotly.graph_objects as go
 
 from pipeline import run_pipeline, RISK_ORDER, BLOCKS
 
+# CAMEL indicators grouped by block (E, M, A, L, C) in display order, for the raw-ratio table
+CAMEL_COLS_ORDER = [c for cols in BLOCKS.values() for c in cols]
+
 # ---------------------------------------------------------------------------
 # Config & palette (validated dataviz-skill palette; status colors for risk
 # states, categorical colors for CAMEL factors, diverging blue<->red for
@@ -41,6 +44,24 @@ FACTOR_NAME = {
 }
 POS_COLOR, NEG_COLOR = "#e34948", "#2a78d6"   # diverging: positive=risk(red), negative=strength(blue)
 SEQ_BLUE = ["#cde2fb", "#9ec5f4", "#5598e7", "#2a78d6", "#184f95"]
+BENCH_COLOR = "#52514e"
+
+# Regulatory reference used purely as a visual benchmark line (not a model input).
+# 3% is the NPL ceiling widely referenced in Vietnamese banking regulation as a
+# condition of "safe" operating status (e.g. cited as the threshold credit
+# institutions must stay under to be allowed to contribute capital / buy shares).
+NPL_BENCHMARK = 3.0
+
+RAW_UNIT = {c: "%" for c in ["ROE", "ROA", "NIM", "CIR", "NIE", "NPLR", "PCR", "LTD", "LTA", "ETA", "ETD"]}
+RAW_LABEL = {
+    "ROE": "ROE - Lợi nhuận/Vốn chủ sở hữu", "ROA": "ROA - Lợi nhuận/Tổng tài sản",
+    "NIM": "NIM - Biên lãi ròng", "CIR": "CIR - Chi phí/Thu nhập",
+    "NIE": "NIE - Chi phí ngoài lãi/Tổng thu nhập", "NPLR": "NPLR - Tỷ lệ nợ xấu",
+    "PCR": "PCR - Tỷ lệ trích lập dự phòng/nợ xấu", "LTD": "LTD - Tài sản thanh khoản/Tiền gửi",
+    "LTA": "LTA - Tài sản thanh khoản/Tổng tài sản", "ETA": "ETA - Vốn chủ sở hữu/Tổng tài sản",
+    "ETD": "ETD - Vốn chủ sở hữu/Tiền gửi",
+}
+RAW_BLOCK_OF = {c: b for b, cols in BLOCKS.items() for c in cols}
 
 DIAGNOSTIC_TIPS = {
     "E": [
@@ -112,6 +133,7 @@ else:
     st.sidebar.caption("Đang dùng dữ liệu mặc định: Le et al. (2022), 2002-2021, 44 ngân hàng.")
 
 labeled = result["labeled"]
+cleaned = result["cleaned"]  # raw CAMEL ratios (%), before risk-orientation/standardization
 centroids = result["centroids"]
 transition_probs = result["transition_probs"]
 timelines = result["timelines"]
@@ -142,6 +164,55 @@ st.caption(
     f"Method reimplemented from Chung & Hung (2026), *Int. Review of Economics and Finance*, 110, 105571."
 )
 
+# Prominent, always-visible data-context bar: what exactly is being viewed right now.
+_latest_year_counts = latest["Year"].value_counts().sort_index(ascending=False)
+_mixed_years = len(_latest_year_counts) > 1
+st.markdown(
+    f"""<div style="background:#eef2f6;border:1px solid #c3c2b7;border-radius:8px;
+    padding:10px 16px;margin-bottom:10px;font-size:14px;color:#33322f;">
+    📅 Đang xem: <b>{_n_banks} ngân hàng</b> &nbsp;|&nbsp; dữ liệu lịch sử <b>{_yr_min}-{_yr_max}</b>
+    &nbsp;|&nbsp; năm gần nhất có dữ liệu: <b>{_yr_max}</b>{' (một số NH báo cáo trễ hơn, xem ghi chú bên dưới)' if _mixed_years else ''}
+    </div>""",
+    unsafe_allow_html=True,
+)
+if _mixed_years:
+    _yr_breakdown = ", ".join(f"{int(yr)}: {n} NH" for yr, n in _latest_year_counts.items())
+    st.warning(
+        f"⚠️ Lưu ý: các ngân hàng trong bảng/biểu đồ 'năm gần nhất' không cùng một mốc thời gian "
+        f"(năm dữ liệu gần nhất khác nhau theo từng ngân hàng: {_yr_breakdown}). "
+        f"Đây có thể do báo cáo không đồng đều theo thời gian trong file nguồn - cần lưu ý khi so sánh "
+        f"trực tiếp giữa các ngân hàng ở bảng 'System snapshot' và 'Portfolio table'."
+    )
+
+with st.expander("ℹ️ Về phương pháp luận (tóm tắt)"):
+    st.markdown(
+        """
+**Dữ liệu đầu vào:** báo cáo tài chính hàng năm của các NHTM Việt Nam (Bank Code, Year, và các
+chỉ tiêu tài chính thô dùng để tính 11 chỉ số CAMEL: ROE, ROA, NIM, CIR, NIE, NPLR, PCR, LTD, LTA, ETA, ETD).
+
+**Các bước xử lý (chạy lại hoàn toàn mỗi khi có dữ liệu mới, không có bước "train" riêng):**
+1. Làm sạch dữ liệu, tính 11 chỉ số CAMEL, loại ngân hàng chính sách (VBSP).
+2. "Risk-orient" - đổi dấu các chỉ số mà giá trị gốc càng cao càng an toàn (vd. ROE, ROA), để sau
+   transform mọi chỉ số đều theo chiều "càng cao càng rủi ro".
+3. Biến đổi log-modulus (giảm ảnh hưởng outlier/skew) rồi chuẩn hóa z-score.
+4. Chạy PCA riêng cho từng nhóm CAMEL (Earnings, Management, Asset quality, Liquidity, Capital),
+   lấy thành phần chính PC1 làm điểm rủi ro đại diện cho nhóm đó.
+5. Gộp 5 điểm nhóm (E, M, A, L, C) làm không gian đặc trưng, chạy K-means (k=5), xếp hạng 5 cụm
+   theo chỉ số rủi ro tổng hợp trung bình -> Low risk / Moderate / Watchlist / Stressed / Distress.
+6. Tính ma trận chuyển trạng thái 1 năm và timeline từng ngân hàng để phát hiện xu hướng xấu đi sớm.
+
+**Giới hạn quan trọng:** đây là mô hình phân cụm không giám sát (unsupervised) mang tính *mô tả và
+so sánh tương đối trong mẫu dữ liệu hiện có*, không phải mô hình dự báo (predictive) hay xếp hạng
+tín nhiệm chính thức. Ranh giới giữa 5 nhóm rủi ro phụ thuộc vào chính tập dữ liệu được nạp vào -
+khi đổi bộ dữ liệu (vd. thêm/bớt năm, thêm/bớt ngân hàng), ranh giới này có thể dịch chuyển. Các gợi
+ý "hướng đào sâu" trong tab Bank Detail chỉ mang tính chẩn đoán, không phải khuyến nghị hành động
+giám sát/đầu tư cụ thể.
+
+Phương pháp phỏng dựng lại theo Chung, N.H. & Hung, V.T. (2026), *Bank risk clustering and early
+warning supervision*, International Review of Economics and Finance, 110, 105571.
+        """
+    )
+
 tab1, tab2, tab3 = st.tabs(["Portfolio Overview", "Bank Detail", "System Transitions"])
 
 # ---------------------------------------------------------------------------
@@ -161,6 +232,28 @@ with tab1:
                 <div style="font-size:13px;color:#52514e;">{state}</div></div>""",
                 unsafe_allow_html=True,
             )
+
+    st.markdown("#### Diễn biến rủi ro toàn hệ thống theo thời gian")
+    yearly = (
+        labeled.groupby(["Year", "RiskState"]).size().unstack(fill_value=0)
+        .reindex(columns=RISK_ORDER, fill_value=0).sort_index()
+    )
+    fig_sys = go.Figure()
+    for state in RISK_ORDER:
+        fig_sys.add_trace(go.Bar(
+            x=yearly.index, y=yearly[state], name=state, marker_color=STATUS_COLOR[state],
+            hovertemplate=f"%{{x}}<br>{state}: %{{y}} ngân hàng<extra></extra>",
+        ))
+    fig_sys.update_layout(
+        barmode="stack", height=320, margin=dict(l=10, r=10, t=10, b=10),
+        xaxis_title="Năm", yaxis_title="Số ngân hàng", legend_title="Nhóm rủi ro",
+        plot_bgcolor="#fcfcfb", paper_bgcolor="#fcfcfb",
+    )
+    st.plotly_chart(fig_sys, use_container_width=True)
+    st.caption(
+        "Số lượng ngân hàng theo từng nhóm rủi ro qua các năm - dùng để nhận diện những giai đoạn cả "
+        "hệ thống xấu đi (mảng đỏ/cam mở rộng) so với chỉ một vài ngân hàng riêng lẻ."
+    )
 
     st.markdown("#### Recent alerts - banks whose latest year-over-year move was a worsening transition")
     if alerts.empty:
@@ -278,6 +371,55 @@ with tab2:
         st.caption(
             "Đây là gợi ý chẩn đoán (nên xem thêm dữ liệu gì), không phải khuyến nghị hành động cụ thể - "
             "quyết định giám sát/đầu tư vẫn thuộc thẩm quyền chuyên môn của người dùng."
+        )
+
+    st.markdown("---")
+    raw_bh = cleaned[cleaned["Bank Code"] == bank].sort_values("Year")
+    raw_cur = raw_bh[raw_bh["Year"] == cur["Year"]].iloc[0]
+
+    col_raw, col_npl = st.columns([1, 1.3])
+    with col_raw:
+        st.markdown(f"##### Tỷ lệ CAMEL thực tế (%) - {int(cur['Year'])}")
+        raw_table = pd.DataFrame({
+            "Chỉ số": [RAW_LABEL[c] for c in CAMEL_COLS_ORDER],
+            "Nhóm": [RAW_BLOCK_OF[c] for c in CAMEL_COLS_ORDER],
+            "Giá trị (%)": [raw_cur[c] for c in CAMEL_COLS_ORDER],
+        })
+
+        def style_block(s):
+            return [f"background-color:{FACTOR_COLOR[v]}22;color:{FACTOR_COLOR[v]};font-weight:600" for v in s]
+
+        st.dataframe(
+            raw_table.style.apply(style_block, subset=["Nhóm"]).format({"Giá trị (%)": "{:.2f}"}),
+            use_container_width=True, hide_index=True,
+        )
+        st.caption(
+            "Các tỷ lệ tài chính gốc (chưa risk-orient / chuẩn hóa) - dùng để đối chiếu trực tiếp với "
+            "ngưỡng quy định hoặc số liệu báo cáo, thay vì chỉ nhìn độ lệch chuẩn ở biểu đồ bên trên."
+        )
+
+    with col_npl:
+        st.markdown("##### Tỷ lệ nợ xấu (NPL) theo thời gian - so với ngưỡng tham chiếu")
+        fig_npl = go.Figure()
+        fig_npl.add_trace(go.Scatter(
+            x=raw_bh["Year"], y=raw_bh["NPLR"], mode="lines+markers", name=bank,
+            line=dict(color=STATUS_COLOR["Stressed"], width=2), marker=dict(size=9),
+            hovertemplate="Năm %{x}<br>NPL: %{y:.2f}%<extra></extra>",
+        ))
+        fig_npl.add_hline(
+            y=NPL_BENCHMARK, line_dash="dash", line_color=BENCH_COLOR,
+            annotation_text=f"Ngưỡng tham chiếu {NPL_BENCHMARK:.0f}%", annotation_position="top left",
+        )
+        fig_npl.update_layout(
+            height=290, margin=dict(l=10, r=10, t=10, b=10),
+            xaxis_title="Năm", yaxis_title="NPL (%)",
+            plot_bgcolor="#fcfcfb", paper_bgcolor="#fcfcfb",
+        )
+        st.plotly_chart(fig_npl, use_container_width=True)
+        st.caption(
+            f"Đường nét đứt: {NPL_BENCHMARK:.0f}% - ngưỡng tỷ lệ nợ xấu nội bảng thường được dùng làm "
+            "mốc an toàn hoạt động trong quy định ngân hàng tại Việt Nam (mang tính tham chiếu trực quan, "
+            "không phải input của mô hình phân cụm)."
         )
 
 # ---------------------------------------------------------------------------
