@@ -154,6 +154,16 @@ complexity (and the question of whether a data-driven peer average or an
 official regulatory threshold is the more defensible benchmark) needed
 more discussion before shipping it.
 
+Also added: a one-line "Answers: ..." caption under each chart title on the
+System Transitions page, stating in plain language the exact question the
+chart is meant to answer (e.g. the transition matrix pools every
+consecutive-year pair across all banks and all of 2002-2021 — it isn't tied
+to a single calendar year). A single-year filter for these two charts was
+considered and intentionally left out: slicing the pooled 487 transition
+pairs down to one starting year leaves as few as 5-40 pairs spread across
+a 5x5 grid, which produces empty or near-empty cells and unreliable
+percentages (verified on the actual dataset before deciding against it).
+
 ## Deploy for the live demo
 
 Push this folder to a GitHub repo and deploy free at

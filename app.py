@@ -412,6 +412,11 @@ elif page == "System Transitions":
     sys_filter_bank = st.selectbox("Filter by bank", sys_bank_options, key="sys_trans_bank")
 
     st.subheader("One-year transition matrix (system-wide)")
+    st.caption(
+        "Answers: across the full 2002-2021 panel, if a bank is currently in risk state X, "
+        "what is the probability it moves to state Y one year later? (Pooled across all banks "
+        "and all consecutive-year pairs - not tied to any single calendar year.)"
+    )
     axis_labels = [f"{RISK_ICON[s]} {s}" for s in RISK_ORDER]
     z = transition_probs.values
     fig_heat = go.Figure(go.Heatmap(
@@ -430,6 +435,10 @@ elif page == "System Transitions":
     st.plotly_chart(fig_heat, use_container_width=True)
 
     st.subheader('State persistence ("stickiness")')
+    st.caption(
+        "Answers: once a bank enters a given risk state, how likely is it to still be in that "
+        "same state one year later? (The diagonal of the matrix above, read out as a bar per state.)"
+    )
     persistence = [transition_probs.loc[s, s] for s in RISK_ORDER]
     fig_pers = go.Figure(go.Bar(
         x=axis_labels, y=persistence,
