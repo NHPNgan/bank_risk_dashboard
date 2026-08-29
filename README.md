@@ -77,7 +77,8 @@ results, and forming a view of sector health:
 - **NPL benchmark chart** (Bank Detail page): the bank's NPL ratio over time
   with a reference line at 3%, the ceiling commonly cited in Vietnamese
   banking regulation as a safe-operation threshold. This line is a visual
-  reference only, not an input to the clustering model.
+  reference only, not an input to the clustering model. *(Removed in the
+  "Latest update" round below — see that section.)*
 
 ## UX pass (5 fixes)
 
@@ -103,11 +104,55 @@ A second round of changes after a UI/UX review of the app itself:
    with that bank pre-selected, instead of requiring the user to remember
    the bank code and re-select it from a dropdown. (Implemented by
    replacing `st.tabs` with a session-state-backed radio nav, since
-   Streamlit's native tabs can't be switched programmatically.)
+   Streamlit's native tabs can't be switched programmatically.) *(The
+   "Recent alerts" widget itself was later removed — see "Latest update"
+   below — but the session-state radio nav it required stays in place,
+   since Bank Detail's own bank selector still benefits from it.)*
 5. **Friendlier upload errors.** A bad upload (wrong sheet name, missing
    columns) now shows a plain-English message telling the user what to
    check, instead of a raw Python exception; the original exception is
    still available in a collapsed "Technical details" expander.
+
+## Latest update (dashboard adjustments)
+
+A further round of changes, based on direct review of the dashboard:
+
+**Portfolio Overview**
+- Removed the "Recent alerts" widget.
+- The Portfolio table now has three filters (risk group, year, bank) and
+  pulls from the full multi-year history instead of just each bank's latest
+  year — defaults to the most recent year, but older years or specific
+  banks can be added.
+
+**Bank Detail**
+- Added a year selector that drives both the "CAMEL factor breakdown" chart
+  and the "Actual CAMEL ratios (%)" table together.
+- Rewrote "Suggested areas to investigate" to be clearer and more
+  action-oriented business English (e.g. "Dig into the NIM trend...",
+  "Request a provisioning-adequacy review if coverage looks thin...").
+- Removed the "NPL ratio over time" widget.
+- "Actual CAMEL ratios (%)" table now spans the full row width, with a
+  taller row height so all 11 indicators show without scrolling. A caption
+  below the table flags that this table shows the single selected year's
+  raw figures, while the CAMEL factor breakdown chart above benchmarks
+  against the full 2002-2021 panel average — the two can point in
+  different directions for the same bank-year, which reflects two
+  different reference points rather than a bug.
+
+**System Transitions**
+- Added a "Filter by bank" selector. The system-wide transition matrix and
+  persistence chart stay aggregate (that is their structural basis, drawn
+  from `transition_probs`), and selecting a specific bank adds a table
+  below — built from the per-bank `timelines` data — showing that bank's
+  own year-by-year transitions, with each move flagged Worsened / Improved
+  / No change.
+
+A peer-average benchmark column (comparing each ratio in "Actual CAMEL
+ratios" against the same-year average across all banks) was prototyped and
+reviewed, but not adopted for this version — the team decided the added
+complexity (and the question of whether a data-driven peer average or an
+official regulatory threshold is the more defensible benchmark) needed
+more discussion before shipping it.
 
 ## Deploy for the live demo
 
