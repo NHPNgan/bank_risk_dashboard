@@ -34,6 +34,15 @@ STATUS_COLOR = {
     "Stressed": "#ec835a",
     "Distress": "#d03b3b",
 }
+# Redundant, non-color encoding for the 5 risk states (accessibility: don't rely on hue alone,
+# e.g. for red-green color-blind viewers). Distinct shapes rather than a color-only legend.
+RISK_ICON = {
+    "Low risk": "●",   # ●
+    "Moderate": "◆",   # ◆
+    "Watchlist": "▲",  # ▲
+    "Stressed": "■",   # ■
+    "Distress": "✖",   # ✖
+}
 FACTOR_COLOR = {"E": "#2a78d6", "M": "#eb6834", "A": "#1baf7a", "L": "#eda100", "C": "#e87ba4"}
 FACTOR_NAME = {
     "E": "Earnings (ROE, ROA, NIM)",
@@ -52,42 +61,41 @@ BENCH_COLOR = "#52514e"
 # institutions must stay under to be allowed to contribute capital / buy shares).
 NPL_BENCHMARK = 3.0
 
-RAW_UNIT = {c: "%" for c in ["ROE", "ROA", "NIM", "CIR", "NIE", "NPLR", "PCR", "LTD", "LTA", "ETA", "ETD"]}
 RAW_LABEL = {
-    "ROE": "ROE - Lợi nhuận/Vốn chủ sở hữu", "ROA": "ROA - Lợi nhuận/Tổng tài sản",
-    "NIM": "NIM - Biên lãi ròng", "CIR": "CIR - Chi phí/Thu nhập",
-    "NIE": "NIE - Chi phí ngoài lãi/Tổng thu nhập", "NPLR": "NPLR - Tỷ lệ nợ xấu",
-    "PCR": "PCR - Tỷ lệ trích lập dự phòng/nợ xấu", "LTD": "LTD - Tài sản thanh khoản/Tiền gửi",
-    "LTA": "LTA - Tài sản thanh khoản/Tổng tài sản", "ETA": "ETA - Vốn chủ sở hữu/Tổng tài sản",
-    "ETD": "ETD - Vốn chủ sở hữu/Tiền gửi",
+    "ROE": "ROE - Return on Equity", "ROA": "ROA - Return on Assets",
+    "NIM": "NIM - Net Interest Margin", "CIR": "CIR - Cost-to-Income Ratio",
+    "NIE": "NIE - Non-Interest Expense / Total Income", "NPLR": "NPLR - Non-Performing Loan Ratio",
+    "PCR": "PCR - Provision Coverage Ratio", "LTD": "LTD - Liquid Assets / Total Deposits",
+    "LTA": "LTA - Liquid Assets / Total Assets", "ETA": "ETA - Equity / Total Assets",
+    "ETD": "ETD - Equity / Total Deposits",
 }
 RAW_BLOCK_OF = {c: b for b, cols in BLOCKS.items() for c in cols}
 
 DIAGNOSTIC_TIPS = {
     "E": [
-        "Xu hướng biên lãi ròng (NIM) và cơ cấu thu nhập lãi vs phi lãi gần đây",
-        "Chất lượng danh mục cho vay có gây áp lực lên lợi nhuận không",
-        "So sánh ROE/ROA với trung bình ngành trong cùng giai đoạn",
+        "Recent NIM trend and the mix of interest vs. non-interest income",
+        "Whether loan portfolio quality is putting pressure on profitability",
+        "Compare ROE/ROA against the industry average for the same period",
     ],
     "M": [
-        "Cơ cấu chi phí hoạt động (nhân sự, mạng lưới chi nhánh) có đang phình to bất thường",
-        "Tỷ lệ chi phí/thu nhập (CIR) so với kế hoạch ngân sách nội bộ",
-        "Hiệu quả đầu tư công nghệ/số hóa để giảm chi phí vận hành",
+        "Whether the cost structure (staff, branch network) is expanding unusually fast",
+        "Cost-to-income ratio (CIR) against internal budget plans",
+        "Effectiveness of technology/digitalization investment in reducing operating costs",
     ],
     "A": [
-        "Mức độ tập trung tín dụng theo ngành/khách hàng lớn",
-        "Xu hướng nợ xấu mới phát sinh (NPL formation) và các khoản nợ tái cơ cấu",
-        "Chính sách trích lập dự phòng có đủ thận trọng so với rủi ro danh mục",
+        "Credit concentration by sector or large borrowers",
+        "Trend in new NPL formation and restructured/rescheduled loans",
+        "Whether provisioning policy is conservative enough relative to portfolio risk",
     ],
     "L": [
-        "Mức độ phụ thuộc vào nguồn vốn bán buôn/liên ngân hàng ngắn hạn",
-        "Độ tập trung tiền gửi (khách hàng lớn chiếm bao nhiêu % tổng huy động)",
-        "Xu hướng tỷ lệ LDR và khả năng đáp ứng rút tiền đột biến",
+        "Reliance on short-term wholesale/interbank funding",
+        "Deposit concentration (share of total funding from large depositors)",
+        "LDR trend and capacity to meet a sudden spike in withdrawals",
     ],
     "C": [
-        "Kế hoạch tăng vốn hoặc giữ lại lợi nhuận trong 1-2 năm tới",
-        "Tốc độ tăng tài sản có rủi ro (RWA) so với tốc độ tăng vốn chủ sở hữu",
-        "Chính sách cổ tức có đang bào mòn bộ đệm vốn không",
+        "Capital-raising plans or profit retention over the next 1-2 years",
+        "Growth rate of risk-weighted assets (RWA) relative to equity growth",
+        "Whether dividend policy is eroding the capital buffer",
     ],
 }
 
@@ -104,33 +112,58 @@ def load_from_bytes(file_bytes, sheet_name):
     return run_pipeline(BytesIO(file_bytes), sheet_name=sheet_name)
 
 
+def _friendly_upload_error(e: Exception, sheet: str) -> str:
+    """Translate a raw pandas/pipeline exception into plain-English guidance."""
+    msg = str(e)
+    if isinstance(e, KeyError):
+        return (
+            f"This file is missing an expected column ({msg}). Make sure the column "
+            f"headers exactly match the original dataset template."
+        )
+    if "Worksheet" in msg or "sheet" in msg.lower():
+        return (
+            f'Could not find a sheet named "{sheet}" in this file. Check the sheet '
+            f"name field on the left and try again."
+        )
+    return (
+        "Could not read this file. Please check that it uses the same sheet name and "
+        "column headers as the original dataset template."
+    )
+
+
+def _goto_bank(bank_code):
+    """Callback used by 'View' buttons to jump straight to Bank Detail for one bank."""
+    st.session_state.page = "Bank Detail"
+    st.session_state.bank_select = bank_code
+
+
 # ---------------------------------------------------------------------------
-# Sidebar - optional data upload (dùng để nạp dữ liệu cập nhật làm "test set"
-# demo trực tiếp trong buổi thuyết trình, không cần sửa code / deploy lại)
+# Sidebar - optional data upload (lets the user load updated data as a live
+# "test set" during the presentation, with no code edit or redeploy needed)
 # ---------------------------------------------------------------------------
-st.sidebar.markdown("### Dữ liệu nguồn")
+st.sidebar.markdown("### Data source")
 uploaded_file = st.sidebar.file_uploader(
-    "Nạp file dữ liệu cập nhật (.xlsx, cùng cấu trúc cột với bộ dữ liệu gốc)",
+    "Upload updated data (.xlsx, same column structure as the original dataset)",
     type=["xlsx"],
 )
-sheet_name = st.sidebar.text_input("Tên sheet chứa dữ liệu", value="Data")
+sheet_name = st.sidebar.text_input("Sheet name containing the data", value="Data")
 
 if uploaded_file is not None:
     try:
         result = load_from_bytes(uploaded_file.getvalue(), sheet_name)
-        st.sidebar.success(f"Đang dùng dữ liệu tải lên: **{uploaded_file.name}**")
-        if st.sidebar.button("Quay lại dữ liệu mặc định"):
+        st.sidebar.success(f"Using uploaded data: **{uploaded_file.name}**")
+        if st.sidebar.button("Reset to default data"):
             uploaded_file = None
             st.rerun()
     except Exception as e:
-        st.sidebar.error(
-            f"Không đọc được file này (kiểm tra lại tên sheet và cấu trúc cột). Chi tiết lỗi: {e}"
-        )
-        st.sidebar.warning("Đang dùng tạm dữ liệu mặc định bên dưới.")
+        st.sidebar.error(_friendly_upload_error(e, sheet_name))
+        with st.sidebar.expander("Technical details"):
+            st.code(f"{type(e).__name__}: {e}")
+        st.sidebar.warning("Falling back to the default dataset below.")
         result = load_default()
 else:
     result = load_default()
-    st.sidebar.caption("Đang dùng dữ liệu mặc định: Le et al. (2022), 2002-2021, 44 ngân hàng.")
+    st.sidebar.caption("Using default dataset: Le et al. (2022), 2002-2021, 44 banks.")
 
 labeled = result["labeled"]
 cleaned = result["cleaned"]  # raw CAMEL ratios (%), before risk-orientation/standardization
@@ -149,76 +182,25 @@ latest = labeled.sort_values("Year").groupby("Bank Code").tail(1).reset_index(dr
 latest = latest.sort_values("AggRisk", ascending=False)
 
 # ---------------------------------------------------------------------------
-# Header
+# Header + navigation
+# (a horizontal radio, not st.tabs, so a "View" button elsewhere in the app
+# can jump the user straight to Bank Detail with a bank pre-selected)
 # ---------------------------------------------------------------------------
 st.title("Bank Risk Early-Warning Supervision Dashboard")
-_n_banks = labeled["Bank Code"].nunique()
-_yr_min, _yr_max = int(labeled["Year"].min()), int(labeled["Year"].max())
-_data_desc = (
-    f"file tải lên ({uploaded_file.name})" if uploaded_file is not None
-    else "Le et al. (2022) Vietnamese banking dataset"
+
+if "page" not in st.session_state:
+    st.session_state.page = "Portfolio Overview"
+
+page = st.radio(
+    "Navigate", ["Portfolio Overview", "Bank Detail", "System Transitions"],
+    horizontal=True, key="page", label_visibility="collapsed",
 )
-st.caption(
-    f"Demo prototype - CAMEL block-wise PCA + K-means clustering. "
-    f"Data: {_data_desc}, {_n_banks} ngân hàng, {_yr_min}-{_yr_max}. "
-    f"Method reimplemented from Chung & Hung (2026), *Int. Review of Economics and Finance*, 110, 105571."
-)
-
-# Prominent, always-visible data-context bar: what exactly is being viewed right now.
-_latest_year_counts = latest["Year"].value_counts().sort_index(ascending=False)
-_mixed_years = len(_latest_year_counts) > 1
-st.markdown(
-    f"""<div style="background:#eef2f6;border:1px solid #c3c2b7;border-radius:8px;
-    padding:10px 16px;margin-bottom:10px;font-size:14px;color:#33322f;">
-    📅 Đang xem: <b>{_n_banks} ngân hàng</b> &nbsp;|&nbsp; dữ liệu lịch sử <b>{_yr_min}-{_yr_max}</b>
-    &nbsp;|&nbsp; năm gần nhất có dữ liệu: <b>{_yr_max}</b>{' (một số NH báo cáo trễ hơn, xem ghi chú bên dưới)' if _mixed_years else ''}
-    </div>""",
-    unsafe_allow_html=True,
-)
-if _mixed_years:
-    _yr_breakdown = ", ".join(f"{int(yr)}: {n} NH" for yr, n in _latest_year_counts.items())
-    st.warning(
-        f"⚠️ Lưu ý: các ngân hàng trong bảng/biểu đồ 'năm gần nhất' không cùng một mốc thời gian "
-        f"(năm dữ liệu gần nhất khác nhau theo từng ngân hàng: {_yr_breakdown}). "
-        f"Đây có thể do báo cáo không đồng đều theo thời gian trong file nguồn - cần lưu ý khi so sánh "
-        f"trực tiếp giữa các ngân hàng ở bảng 'System snapshot' và 'Portfolio table'."
-    )
-
-with st.expander("ℹ️ Về phương pháp luận (tóm tắt)"):
-    st.markdown(
-        """
-**Dữ liệu đầu vào:** báo cáo tài chính hàng năm của các NHTM Việt Nam (Bank Code, Year, và các
-chỉ tiêu tài chính thô dùng để tính 11 chỉ số CAMEL: ROE, ROA, NIM, CIR, NIE, NPLR, PCR, LTD, LTA, ETA, ETD).
-
-**Các bước xử lý (chạy lại hoàn toàn mỗi khi có dữ liệu mới, không có bước "train" riêng):**
-1. Làm sạch dữ liệu, tính 11 chỉ số CAMEL, loại ngân hàng chính sách (VBSP).
-2. "Risk-orient" - đổi dấu các chỉ số mà giá trị gốc càng cao càng an toàn (vd. ROE, ROA), để sau
-   transform mọi chỉ số đều theo chiều "càng cao càng rủi ro".
-3. Biến đổi log-modulus (giảm ảnh hưởng outlier/skew) rồi chuẩn hóa z-score.
-4. Chạy PCA riêng cho từng nhóm CAMEL (Earnings, Management, Asset quality, Liquidity, Capital),
-   lấy thành phần chính PC1 làm điểm rủi ro đại diện cho nhóm đó.
-5. Gộp 5 điểm nhóm (E, M, A, L, C) làm không gian đặc trưng, chạy K-means (k=5), xếp hạng 5 cụm
-   theo chỉ số rủi ro tổng hợp trung bình -> Low risk / Moderate / Watchlist / Stressed / Distress.
-6. Tính ma trận chuyển trạng thái 1 năm và timeline từng ngân hàng để phát hiện xu hướng xấu đi sớm.
-
-**Giới hạn quan trọng:** đây là mô hình phân cụm không giám sát (unsupervised) mang tính *mô tả và
-so sánh tương đối trong mẫu dữ liệu hiện có*, không phải mô hình dự báo (predictive) hay xếp hạng
-tín nhiệm chính thức. Ranh giới giữa 5 nhóm rủi ro phụ thuộc vào chính tập dữ liệu được nạp vào -
-khi đổi bộ dữ liệu (vd. thêm/bớt năm, thêm/bớt ngân hàng), ranh giới này có thể dịch chuyển. Các gợi
-ý "hướng đào sâu" trong tab Bank Detail chỉ mang tính chẩn đoán, không phải khuyến nghị hành động
-giám sát/đầu tư cụ thể.
-
-Phương pháp phỏng dựng lại theo Chung, N.H. & Hung, V.T. (2026), *Bank risk clustering and early
-warning supervision*, International Review of Economics and Finance, 110, 105571.
-        """
-    )
-
-tab1, tab2, tab3 = st.tabs(["Portfolio Overview", "Bank Detail", "System Transitions"])
+st.markdown("---")
 
 # ---------------------------------------------------------------------------
-# TAB 1 - Portfolio Overview
+# PAGE - Portfolio Overview
 # ---------------------------------------------------------------------------
-with tab1:
+if page == "Portfolio Overview":
     st.subheader("System snapshot (latest year on record per bank)")
 
     counts = latest["RiskState"].value_counts().reindex(RISK_ORDER).fillna(0).astype(int)
@@ -229,11 +211,11 @@ with tab1:
                 f"""<div style="background:{STATUS_COLOR[state]}1a;border:1px solid {STATUS_COLOR[state]};
                 border-radius:10px;padding:14px;text-align:center;">
                 <div style="font-size:26px;font-weight:700;color:{STATUS_COLOR[state]}">{counts[state]}</div>
-                <div style="font-size:13px;color:#52514e;">{state}</div></div>""",
+                <div style="font-size:13px;color:#52514e;">{RISK_ICON[state]} {state}</div></div>""",
                 unsafe_allow_html=True,
             )
 
-    st.markdown("#### Diễn biến rủi ro toàn hệ thống theo thời gian")
+    st.markdown("#### System-wide risk trend over time")
     yearly = (
         labeled.groupby(["Year", "RiskState"]).size().unstack(fill_value=0)
         .reindex(columns=RISK_ORDER, fill_value=0).sort_index()
@@ -241,50 +223,64 @@ with tab1:
     fig_sys = go.Figure()
     for state in RISK_ORDER:
         fig_sys.add_trace(go.Bar(
-            x=yearly.index, y=yearly[state], name=state, marker_color=STATUS_COLOR[state],
-            hovertemplate=f"%{{x}}<br>{state}: %{{y}} ngân hàng<extra></extra>",
+            x=yearly.index, y=yearly[state], name=f"{RISK_ICON[state]} {state}",
+            marker_color=STATUS_COLOR[state],
+            hovertemplate=f"%{{x}}<br>{state}: %{{y}} banks<extra></extra>",
         ))
     fig_sys.update_layout(
         barmode="stack", height=320, margin=dict(l=10, r=10, t=10, b=10),
-        xaxis_title="Năm", yaxis_title="Số ngân hàng", legend_title="Nhóm rủi ro",
+        xaxis_title="Year", yaxis_title="Number of banks", legend_title="Risk group",
         plot_bgcolor="#fcfcfb", paper_bgcolor="#fcfcfb",
     )
     st.plotly_chart(fig_sys, use_container_width=True)
     st.caption(
-        "Số lượng ngân hàng theo từng nhóm rủi ro qua các năm - dùng để nhận diện những giai đoạn cả "
-        "hệ thống xấu đi (mảng đỏ/cam mở rộng) so với chỉ một vài ngân hàng riêng lẻ."
+        "Number of banks in each risk group by year - useful for spotting periods where the "
+        "whole system worsened (red/orange area expands) versus just a few individual banks."
     )
 
     st.markdown("#### Recent alerts - banks whose latest year-over-year move was a worsening transition")
     if alerts.empty:
         st.info(
-            "Không có ngân hàng nào chuyển biến xấu ở cặp năm liên tiếp gần nhất trong dữ liệu lịch sử "
-            "hiện có. Tính năng này sẽ có ý nghĩa rõ hơn khi nạp dữ liệu cập nhật làm test set."
+            "No bank had a worsening transition between the latest consecutive years in the "
+            "current historical data. This feature becomes more meaningful once updated data "
+            "is loaded as a live test set."
         )
     else:
         for _, row in alerts.iterrows():
-            st.markdown(
-                f"""<div style="border-left:4px solid {STATUS_COLOR[row['To state']]};padding:8px 12px;
-                margin-bottom:6px;background:#fcfcfb;border-radius:4px;">
-                <b>{row['Bank Code']}</b> &nbsp; {row['From year']} → {row['To year']}: &nbsp;
-                <span style="color:{STATUS_COLOR[row['From state']]}">{row['From state']}</span>
-                &nbsp;→&nbsp;
-                <span style="color:{STATUS_COLOR[row['To state']]};font-weight:700">{row['To state']}</span>
-                </div>""",
-                unsafe_allow_html=True,
-            )
+            col_alert, col_btn = st.columns([6, 1])
+            with col_alert:
+                st.markdown(
+                    f"""<div style="border-left:4px solid {STATUS_COLOR[row['To state']]};padding:8px 12px;
+                    margin-bottom:6px;background:#fcfcfb;border-radius:4px;">
+                    <b>{row['Bank Code']}</b> &nbsp; {row['From year']} → {row['To year']}: &nbsp;
+                    <span style="color:{STATUS_COLOR[row['From state']]}">{RISK_ICON[row['From state']]} {row['From state']}</span>
+                    &nbsp;→&nbsp;
+                    <span style="color:{STATUS_COLOR[row['To state']]};font-weight:700">{RISK_ICON[row['To state']]} {row['To state']}</span>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+            with col_btn:
+                st.button(
+                    "View →", key=f"goto_{row['Bank Code']}_{row['To year']}",
+                    on_click=_goto_bank, args=(row["Bank Code"],),
+                )
 
     st.markdown("#### Portfolio table")
-    filter_states = st.multiselect("Lọc theo nhóm rủi ro", RISK_ORDER, default=RISK_ORDER)
+    filter_states = st.multiselect("Filter by risk group", RISK_ORDER, default=RISK_ORDER)
     view = latest[latest["RiskState"].isin(filter_states)].copy()
     view["Primary driver"] = view["DominantFactor"].map(FACTOR_NAME)
-    display_cols = ["Bank Code", "Year", "RiskState", "Primary driver"] + FACTOR_COLS
+    view["Risk state"] = view["RiskState"].map(lambda s: f"{RISK_ICON[s]} {s}")
+    display_cols = ["Bank Code", "Year", "Risk state", "Primary driver"] + FACTOR_COLS
 
     def style_state(s):
-        return [f"background-color:{STATUS_COLOR[v]}22;color:{STATUS_COLOR[v]};font-weight:600" for v in s]
+        return [
+            f"background-color:{STATUS_COLOR[v.split(' ', 1)[1]]}22;"
+            f"color:{STATUS_COLOR[v.split(' ', 1)[1]]};font-weight:600"
+            for v in s
+        ]
 
     st.dataframe(
-        view[display_cols].style.apply(style_state, subset=["RiskState"]).format(
+        view[display_cols].style.apply(style_state, subset=["Risk state"]).format(
             {c: "{:.2f}" for c in FACTOR_COLS}
         ),
         use_container_width=True,
@@ -292,12 +288,13 @@ with tab1:
     )
 
 # ---------------------------------------------------------------------------
-# TAB 2 - Bank Detail
+# PAGE - Bank Detail
 # ---------------------------------------------------------------------------
-with tab2:
+elif page == "Bank Detail":
     bank_list = sorted(labeled["Bank Code"].unique())
-    default_idx = bank_list.index("ABB") if "ABB" in bank_list else 0
-    bank = st.selectbox("Chọn ngân hàng", bank_list, index=default_idx)
+    if "bank_select" not in st.session_state or st.session_state.bank_select not in bank_list:
+        st.session_state.bank_select = "ABB" if "ABB" in bank_list else bank_list[0]
+    bank = st.selectbox("Select bank", bank_list, key="bank_select")
 
     bh = labeled[labeled["Bank Code"] == bank].sort_values("Year")
     cur = bh.iloc[-1]
@@ -308,7 +305,7 @@ with tab2:
             f"""<div style="background:{STATUS_COLOR[cur['RiskState']]}1a;border:1px solid {STATUS_COLOR[cur['RiskState']]};
             border-radius:10px;padding:16px;text-align:center;">
             <div style="font-size:13px;color:#52514e;">{bank} - {int(cur['Year'])}</div>
-            <div style="font-size:20px;font-weight:700;color:{STATUS_COLOR[cur['RiskState']]}">{cur['RiskState']}</div>
+            <div style="font-size:20px;font-weight:700;color:{STATUS_COLOR[cur['RiskState']]}">{RISK_ICON[cur['RiskState']]} {cur['RiskState']}</div>
             </div>""",
             unsafe_allow_html=True,
         )
@@ -316,24 +313,25 @@ with tab2:
         n_years = len(bh)
         first_state, last_state = bh.iloc[0]["RiskState"], bh.iloc[-1]["RiskState"]
         st.caption(
-            f"Dữ liệu có {n_years} năm ({int(bh['Year'].min())}-{int(bh['Year'].max())}). "
-            f"Trạng thái đầu chuỗi: **{first_state}** -> trạng thái gần nhất: **{last_state}**."
+            f"Data spans {n_years} years ({int(bh['Year'].min())}-{int(bh['Year'].max())}). "
+            f"Starting state: **{first_state}** → latest state: **{last_state}**."
         )
 
-    st.markdown("##### Xu hướng rủi ro theo thời gian")
+    st.markdown("##### Risk trend over time")
     fig_trend = go.Figure()
     fig_trend.add_trace(go.Scatter(
         x=bh["Year"], y=bh["AggRisk"], mode="lines+markers",
         line=dict(color="#898781", width=2),
         marker=dict(size=11, color=[STATUS_COLOR[s] for s in bh["RiskState"]], line=dict(width=1, color="#fff")),
-        text=bh["RiskState"], hovertemplate="Năm %{x}<br>Risk index: %{y:.2f}<br>%{text}<extra></extra>",
+        text=bh["RiskState"], hovertemplate="Year %{x}<br>Risk index: %{y:.2f}<br>%{text}<extra></extra>",
         showlegend=False,
     ))
     fig_trend.update_layout(
         height=280, margin=dict(l=10, r=10, t=10, b=10),
-        xaxis_title="Năm", yaxis_title="Aggregate risk index (risk-oriented)",
+        xaxis_title="Year", yaxis_title="Aggregate risk index (risk-oriented)",
         plot_bgcolor="#fcfcfb", paper_bgcolor="#fcfcfb",
     )
+    fig_trend.update_xaxes(dtick=1, tickformat="d")  # whole years only, never fractional ticks
     st.plotly_chart(fig_trend, use_container_width=True)
 
     col_bar, col_diag = st.columns([1.3, 1])
@@ -345,10 +343,17 @@ with tab2:
             x=vals, y=[FACTOR_NAME[c] for c in FACTOR_COLS], orientation="h",
             marker_color=colors,
             text=[f"{v:+.2f}" for v in vals], textposition="outside",
+            cliponaxis=False,  # never clip the value label even if it overhangs the plot area
         ))
         fig_bar.add_vline(x=0, line_color="#c3c2b7")
+        # Pad the x-axis range so an "outside" text label always has room, instead of
+        # being cut off at the edge of the plot for a large positive/negative bar.
+        _vmin, _vmax = min(vals + [0]), max(vals + [0])
+        _pad = max(abs(_vmin), abs(_vmax)) * 0.35 + 0.05
+        fig_bar.update_xaxes(range=[_vmin - _pad, _vmax + _pad])
+        fig_bar.update_yaxes(automargin=True)
         fig_bar.update_layout(
-            height=260, margin=dict(l=10, r=10, t=10, b=10),
+            height=260, margin=dict(l=10, r=20, t=10, b=10),
             xaxis_title="Deviation (risk-oriented; + = higher risk)",
             plot_bgcolor="#fcfcfb", paper_bgcolor="#fcfcfb",
         )
@@ -357,20 +362,21 @@ with tab2:
         same_year = labeled[labeled["Year"] == cur["Year"]]
         pct = (same_year["AggRisk"] < cur["AggRisk"]).mean() * 100
         st.caption(
-            f"So với {len(same_year)} ngân hàng khác cùng năm {int(cur['Year'])}: "
-            f"chỉ số rủi ro tổng hợp của {bank} cao hơn **{pct:.0f}%** ngân hàng trong mẫu "
-            f"(percentile {pct:.0f} - 100 = rủi ro cao nhất hệ thống)."
+            f"Compared to {len(same_year)} other banks in {int(cur['Year'])}: {bank}'s aggregate "
+            f"risk index is higher than **{pct:.0f}%** of banks in the sample "
+            f"(percentile {pct:.0f} - 100 = highest risk in the system)."
         )
 
     with col_diag:
-        st.markdown("##### Gợi ý hướng đào sâu (diagnostic)")
+        st.markdown("##### Suggested areas to investigate (diagnostic)")
         dom = cur["DominantFactor"]
-        st.markdown(f"Yếu tố nổi bật nhất: **{FACTOR_NAME[dom]}**")
+        st.markdown(f"Dominant factor: **{FACTOR_NAME[dom]}**")
         for tip in DIAGNOSTIC_TIPS[dom]:
             st.markdown(f"- {tip}")
         st.caption(
-            "Đây là gợi ý chẩn đoán (nên xem thêm dữ liệu gì), không phải khuyến nghị hành động cụ thể - "
-            "quyết định giám sát/đầu tư vẫn thuộc thẩm quyền chuyên môn của người dùng."
+            "These are diagnostic suggestions (what to look into further), not specific "
+            "supervisory or investment recommendations - that decision remains within the "
+            "user's own professional judgment."
         )
 
     st.markdown("---")
@@ -379,57 +385,60 @@ with tab2:
 
     col_raw, col_npl = st.columns([1, 1.3])
     with col_raw:
-        st.markdown(f"##### Tỷ lệ CAMEL thực tế (%) - {int(cur['Year'])}")
+        st.markdown(f"##### Actual CAMEL ratios (%) - {int(cur['Year'])}")
         raw_table = pd.DataFrame({
-            "Chỉ số": [RAW_LABEL[c] for c in CAMEL_COLS_ORDER],
-            "Nhóm": [RAW_BLOCK_OF[c] for c in CAMEL_COLS_ORDER],
-            "Giá trị (%)": [raw_cur[c] for c in CAMEL_COLS_ORDER],
+            "Indicator": [RAW_LABEL[c] for c in CAMEL_COLS_ORDER],
+            "Block": [RAW_BLOCK_OF[c] for c in CAMEL_COLS_ORDER],
+            "Value (%)": [raw_cur[c] for c in CAMEL_COLS_ORDER],
         })
 
         def style_block(s):
             return [f"background-color:{FACTOR_COLOR[v]}22;color:{FACTOR_COLOR[v]};font-weight:600" for v in s]
 
         st.dataframe(
-            raw_table.style.apply(style_block, subset=["Nhóm"]).format({"Giá trị (%)": "{:.2f}"}),
+            raw_table.style.apply(style_block, subset=["Block"]).format({"Value (%)": "{:.2f}"}),
             use_container_width=True, hide_index=True,
         )
         st.caption(
-            "Các tỷ lệ tài chính gốc (chưa risk-orient / chuẩn hóa) - dùng để đối chiếu trực tiếp với "
-            "ngưỡng quy định hoặc số liệu báo cáo, thay vì chỉ nhìn độ lệch chuẩn ở biểu đồ bên trên."
+            "Original financial ratios (before risk-orientation / standardization) - for "
+            "comparing directly against regulatory thresholds or reported figures, rather "
+            "than only the standardized deviation shown above."
         )
 
     with col_npl:
-        st.markdown("##### Tỷ lệ nợ xấu (NPL) theo thời gian - so với ngưỡng tham chiếu")
+        st.markdown("##### NPL ratio over time - vs. reference benchmark")
         fig_npl = go.Figure()
         fig_npl.add_trace(go.Scatter(
             x=raw_bh["Year"], y=raw_bh["NPLR"], mode="lines+markers", name=bank,
             line=dict(color=STATUS_COLOR["Stressed"], width=2), marker=dict(size=9),
-            hovertemplate="Năm %{x}<br>NPL: %{y:.2f}%<extra></extra>",
+            hovertemplate="Year %{x}<br>NPL: %{y:.2f}%<extra></extra>",
         ))
         fig_npl.add_hline(
             y=NPL_BENCHMARK, line_dash="dash", line_color=BENCH_COLOR,
-            annotation_text=f"Ngưỡng tham chiếu {NPL_BENCHMARK:.0f}%", annotation_position="top left",
+            annotation_text=f"Reference benchmark {NPL_BENCHMARK:.0f}%", annotation_position="top left",
         )
         fig_npl.update_layout(
             height=290, margin=dict(l=10, r=10, t=10, b=10),
-            xaxis_title="Năm", yaxis_title="NPL (%)",
+            xaxis_title="Year", yaxis_title="NPL (%)",
             plot_bgcolor="#fcfcfb", paper_bgcolor="#fcfcfb",
         )
+        fig_npl.update_xaxes(dtick=1, tickformat="d")
         st.plotly_chart(fig_npl, use_container_width=True)
         st.caption(
-            f"Đường nét đứt: {NPL_BENCHMARK:.0f}% - ngưỡng tỷ lệ nợ xấu nội bảng thường được dùng làm "
-            "mốc an toàn hoạt động trong quy định ngân hàng tại Việt Nam (mang tính tham chiếu trực quan, "
-            "không phải input của mô hình phân cụm)."
+            f"Dashed line: {NPL_BENCHMARK:.0f}% - the on-balance-sheet NPL ratio commonly used "
+            "as a safe-operation threshold in Vietnamese banking regulation (a visual reference "
+            "only, not an input to the clustering model)."
         )
 
 # ---------------------------------------------------------------------------
-# TAB 3 - System Transitions
+# PAGE - System Transitions
 # ---------------------------------------------------------------------------
-with tab3:
-    st.subheader("Ma trận chuyển trạng thái 1 năm (toàn hệ thống)")
+elif page == "System Transitions":
+    st.subheader("One-year transition matrix (system-wide)")
+    axis_labels = [f"{RISK_ICON[s]} {s}" for s in RISK_ORDER]
     z = transition_probs.values
     fig_heat = go.Figure(go.Heatmap(
-        z=z, x=RISK_ORDER, y=RISK_ORDER,
+        z=z, x=axis_labels, y=axis_labels,
         colorscale=[[i / (len(SEQ_BLUE) - 1), c] for i, c in enumerate(SEQ_BLUE)],
         text=[[f"{v:.0%}" for v in row] for row in z],
         texttemplate="%{text}", hovertemplate="%{y} -> %{x}: %{z:.1%}<extra></extra>",
@@ -437,26 +446,28 @@ with tab3:
     ))
     fig_heat.update_layout(
         height=420, margin=dict(l=10, r=10, t=10, b=10),
-        xaxis_title="Trạng thái năm t+1", yaxis_title="Trạng thái năm t",
+        xaxis_title="State at year t+1", yaxis_title="State at year t",
         yaxis=dict(autorange="reversed"),
         plot_bgcolor="#fcfcfb", paper_bgcolor="#fcfcfb",
     )
     st.plotly_chart(fig_heat, use_container_width=True)
 
-    st.subheader("Độ 'dính' của từng trạng thái (persistence)")
+    st.subheader('State persistence ("stickiness")')
     persistence = [transition_probs.loc[s, s] for s in RISK_ORDER]
     fig_pers = go.Figure(go.Bar(
-        x=RISK_ORDER, y=persistence,
+        x=axis_labels, y=persistence,
         marker_color=[STATUS_COLOR[s] for s in RISK_ORDER],
         text=[f"{p:.0%}" for p in persistence], textposition="outside",
+        cliponaxis=False,
     ))
     fig_pers.update_layout(
         height=320, margin=dict(l=10, r=10, t=10, b=10),
-        yaxis_title="Xác suất ở lại cùng trạng thái năm sau", yaxis_tickformat=".0%",
+        yaxis_title="Probability of remaining in the same state next year", yaxis_tickformat=".0%",
         plot_bgcolor="#fcfcfb", paper_bgcolor="#fcfcfb",
     )
     st.plotly_chart(fig_pers, use_container_width=True)
     st.caption(
-        "Trạng thái có persistence cao (vd. Stressed) nghĩa là ngân hàng thường ở lại đó nhiều năm liền - "
-        "phù hợp với phát hiện của bài báo gốc rằng rủi ro ngân hàng thay đổi từ từ, không đột ngột."
+        "A high-persistence state (e.g. Stressed) means banks tend to stay there for several "
+        "consecutive years - consistent with the original paper's finding that bank risk "
+        "changes gradually rather than abruptly."
     )

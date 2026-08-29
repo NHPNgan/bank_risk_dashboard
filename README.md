@@ -9,8 +9,10 @@ supervision," *International Review of Economics and Finance*, 110, 105571.
 - `pipeline.py` — data cleaning, CAMEL ratio construction, risk-orientation +
   log-modulus transform + standardization, block-wise PCA, K-means clustering,
   transition-matrix / timeline / alert computation. All reusable functions.
-- `app.py` — Streamlit dashboard (3 tabs: Portfolio Overview, Bank Detail,
-  System Transitions). Imports `pipeline.py`.
+- `app.py` — Streamlit dashboard (3 pages: Portfolio Overview, Bank Detail,
+  System Transitions, selected via a top nav instead of native tabs so a
+  "View →" button can jump straight to a bank's detail page). Imports
+  `pipeline.py`. All UI text is in English.
 - `requirements.txt` — Python dependencies.
 - `camel_clean.csv`, `camel_standardized.csv`, `camel_factor_scores.csv`,
   `camel_clustered.csv`, `transition_matrix.csv`, `bank_timelines.json`,
@@ -29,20 +31,23 @@ Opens at http://localhost:8501
 
 ## Using updated/current data
 
-The app has a **file uploader in the sidebar** ("Nạp file dữ liệu cập nhật") —
-no code edits or redeploy needed. Upload a new `.xlsx` file with the same
+The app has a **file uploader in the sidebar** ("Upload updated data") — no
+code edits or redeploy needed. Upload a new `.xlsx` file with the same
 column layout as the Le et al. (2022) Vietnamese banking dataset (Bank Code,
 Year, plus the raw balance-sheet/income-statement fields the pipeline maps to
 the 11 CAMEL indicators), confirm the sheet name (default `Data`), and the
 whole dashboard — clustering, transitions, alerts — re-fits on that file
 live. Since PCA + K-means aren't a pretrained model but a fit-on-whatever-
 data-you-give-it procedure, this "retrains" correctly every time; there is no
-separate training step. Use the "Quay lại dữ liệu mặc định" button to switch
+separate training step. Use the "Reset to default data" button to switch
 back to the original 2002-2021 dataset. This is the intended way to demo a
 live "test set" during the presentation.
 
 If a file fails to load (wrong sheet name, missing/renamed columns), the app
-shows the error and falls back to the default dataset rather than crashing.
+shows a plain-English explanation (e.g. "Could not find a sheet named
+'Data' in this file") and falls back to the default dataset rather than
+crashing or showing a raw Python error. The underlying exception is still
+available in a collapsed "Technical details" expander for debugging.
 
 For a permanent change to the default dataset instead, replace
 `data/VN_banks_dataset.xlsx` in the repo (same file name) or edit `DATA_PATH`
@@ -61,27 +66,48 @@ Added after reviewing the dashboard from the perspective of its intended
 user — a bank-system risk supervision unit uploading fresh data, reading
 results, and forming a view of sector health:
 
-- **Data-context bar** right under the title: always shows how many banks and
-  which year range are currently loaded, and which file (default vs
-  uploaded). If banks' "latest year on record" isn't the same across the
-  portfolio (some report later than others), a warning banner lists the
-  breakdown by year so the Portfolio table isn't misread as one single
-  snapshot date.
-- **"Về phương pháp luận" expander**: a collapsible in-app summary of the
-  CAMEL → PCA → K-means → transitions pipeline and its limitations (moved
-  out of this README so an end user reading the live app — not the repo —
-  still sees it).
-- **System-wide trend chart** (Portfolio Overview tab): a stacked bar of bank
-  counts per risk state, by year — shows whether the *whole system* has been
-  getting worse or better over time, not just each bank's own latest state.
-- **Raw CAMEL ratio table** (Bank Detail tab): the actual % ratios (ROE, NPL,
-  CIR, etc.) for the selected bank/year, next to the existing standardized
-  z-score chart — for reading against real-world thresholds, not just
-  relative deviation.
-- **NPL benchmark chart** (Bank Detail tab): the bank's NPL ratio over time
+- **System-wide trend chart** (Portfolio Overview page): a stacked bar of
+  bank counts per risk state, by year — shows whether the *whole system* has
+  been getting worse or better over time, not just each bank's own latest
+  state.
+- **Raw CAMEL ratio table** (Bank Detail page): the actual % ratios (ROE,
+  NPL, CIR, etc.) for the selected bank/year, next to the existing
+  standardized z-score chart — for reading against real-world thresholds,
+  not just relative deviation.
+- **NPL benchmark chart** (Bank Detail page): the bank's NPL ratio over time
   with a reference line at 3%, the ceiling commonly cited in Vietnamese
   banking regulation as a safe-operation threshold. This line is a visual
   reference only, not an input to the clustering model.
+
+## UX pass (5 fixes)
+
+A second round of changes after a UI/UX review of the app itself:
+
+1. **Less preamble before real content.** Removed the always-on data-context
+   banner, the "mixed reporting years" warning, and the in-app methodology
+   expander that used to sit between the title and the first page — a
+   returning user (e.g. daily/weekly use) now reaches the actual data
+   immediately. (Methodology detail lives in this README's "Methodology
+   summary" section instead.)
+2. **Color isn't the only signal for risk state.** Every risk-state label —
+   KPI cards, portfolio table, alerts, chart legends and axes — is now
+   paired with a distinct shape icon (`●` Low risk, `◆` Moderate, `▲`
+   Watchlist, `■` Stressed, `✖` Distress), so the 5 states stay
+   distinguishable for red-green color-blind viewers, not just by hue.
+3. **Fixed a real clipping bug**: on the CAMEL factor breakdown chart, a
+   large deviation value's outside label could get cut off at the plot edge
+   (e.g. "-0.44" rendering as ").44"). Fixed with `cliponaxis=False`,
+   auto-margins, and a padded x-axis range.
+4. **Drill-down from alerts to bank detail.** Each row in "Recent alerts"
+   now has a "View →" button that jumps straight to the Bank Detail page
+   with that bank pre-selected, instead of requiring the user to remember
+   the bank code and re-select it from a dropdown. (Implemented by
+   replacing `st.tabs` with a session-state-backed radio nav, since
+   Streamlit's native tabs can't be switched programmatically.)
+5. **Friendlier upload errors.** A bad upload (wrong sheet name, missing
+   columns) now shows a plain-English message telling the user what to
+   check, instead of a raw Python exception; the original exception is
+   still available in a collapsed "Technical details" expander.
 
 ## Deploy for the live demo
 
